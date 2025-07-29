@@ -7,11 +7,11 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: ga-app
+      app: rana-ga
   template:
     metadata:
       labels:
-        app: ga-app
+        app: rana-ga
     spec:
       containers:
       - name: solar-system
