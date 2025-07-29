@@ -32,7 +32,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ vars.DOCKER_USERNAME }}/rana-ga:${{ github.sha }}
+          tags: ${{ vars.SERVER_URL }}/${{ vars.DOCKER_USERNAME }}/rana-ga:${{ github.sha }}
 
       - name: Set up Kubeconfig
         run: |
