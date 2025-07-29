@@ -1,95 +1,51 @@
-name: Solar System Workflow beginner
-
+name: CI/CD to Kubernetes
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
-#   push:
-#     branches:
-#       - main
-#       - 'feature/*'
 
+env:
+  IMAGE_NAME: rana-ga
+  NAMESPACE: rana
 
 jobs:
-  unit-testing:
-    name: Unit Testing
+  build-and-deploy:
     runs-on: ubuntu-latest
-    services:
-      mongodb-service:
-        image: mongo:latest
-    env:
-      MONGO_URI: 'mongodb+srv://supercluster.d3jj.mongodb.net/superData'
-      MONGO_USERNAME: ${{ vars.MONGO_USERNAME }}
-      MONGO_PASSWORD: ${{ secrets.MONGO_PASSWORD }}
+
     steps:
-      - name: Checkout Repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Setup Node.js Environment
-        uses: actions/setup-node@v3
+      - name: Log in to Docker Registry
+        uses: docker/login-action@v3
         with:
-          node-version: 18
-          cache: 'npm'
+          registry: ${{ vars.SERVER_URL }}
+          username: ${{ vars.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Cache NPM dependencies
-        uses: actions/cache@v3
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v5
         with:
-          path: node_modules
-          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
-      - name: Install Dependencies
-        run: npm install
+          context: .
+          push: true
+          tags: ${{ vars.DOCKER_USERNAME }}/rana-ga:${{ github.sha }}
 
-
-      - name: Run Unit Tests
+      - name: Set up Kubeconfig
+        run: |
+          echo "${{ secrets.KUBECONFIG_CONTENT }}" > kubeconfig
         env:
-          MONGODB_HOST: mongodb-service
-          MONGODB_PORT: 27017
-        continue-on-error: true
-        run: npm test
-    
-      - name: Archive Test Result
-        if: github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@v4
-        with:
-          name: Mocha-Test-Result
-          path: test-results.xml
+          KUBECONFIG_CONTENT: ${{ secrets.KUBECONFIG_CONTENT }}
 
-  docker-build:
-    - name: Docker Hub Login
-      uses: docker/login-action@v2.2.0
-      with:
-        username: ${{ vars.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_PASSWORD }}
-    - name: Build Docker Image for Testing
-      uses: docker/build-push-action@v4
-      with:
-        context: .
-        push: true
-        tags: ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
+      - name: Set KUBECONFIG environment variable
+        run: echo "KUBECONFIG=$GITHUB_WORKSPACE/kubeconfig" >> $GITHUB_ENV
 
-    # - name: Docker Image Testing
-    #   run: |
-    #     # List built images
-    #     docker images
-
-
-    #     # Run the container in detached mode
-    #     docker run --name solar-system-app -d \
-    #       -p 3000:3000 \
-    #       -e MONGO_URI=$MONGO_URI \
-    #       -e MONGO_USERNAME=$MONGO_USERNAME \
-    #       -e MONGO_PASSWORD=$MONGO_PASSWORD \
-    #       ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
-
-
-    #     # Display container IP address
-    #     echo "Container IP:" $(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' solar-system-app)
-
-
-    #     # Test the /live endpoint
-    #     echo "Testing /live endpoint"
-    #     wget -q -O - http://127.0.0.1:3000/live | grep live
-
-    #--------------------------------------------------------------------------------------------------
-# -----------------------------------------------------
-      
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/secrets.yaml
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml
